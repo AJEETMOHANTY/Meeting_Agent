@@ -1,0 +1,56 @@
+# Add project dependencies here, one package per line.
+# ==============================
+# Web Backend
+# ==============================
+fastapi
+uvicorn[standard]
+python-multipart
+
+# ==============================
+# Configuration & Validation
+# ==============================
+pydantic
+pydantic-settings
+python-dotenv
+
+# ==============================
+# Database
+# ==============================
+sqlalchemy
+psycopg[binary]
+pgvector
+
+# ==============================
+# AI / LLM
+# ==============================
+langchain
+langchain-community
+langgraph
+
+# ==============================
+# Speech-to-Text
+# ==============================
+faster-whisper
+
+# ==============================
+# Embeddings
+# ==============================
+sentence-transformers
+
+# ==============================
+# Authentication
+# ==============================
+PyJWT
+pwdlib[argon2]
+
+# ==============================
+# HTTP / Utilities
+# ==============================
+httpx
+requests
+
+# ==============================
+# Testing
+# ==============================
+pytest
+pytest-asyncio
