@@ -41,9 +41,6 @@ class MeetingLLM:
         # ====================================================
         # 2. OLLAMA (OPTIONAL)
         # ====================================================
-        # We do not hard-fail if Ollama is unavailable. This keeps
-        # the project usable in local/dev environments without a
-        # running local model server.
         self.ollama = None
         try:
             self.ollama = ChatOllama(model="llama3.1:latest", temperature=0)
@@ -80,65 +77,65 @@ class MeetingLLM:
         # ====================================================
         self.chunk_prompt = PromptTemplate(
             template="""
-You are an expert meeting summarizer.
+            You are an expert meeting summarizer.
 
-Read the following meeting transcript chunk.
+            Read the following meeting transcript chunk.
 
-Summarize only the useful information.
+            Summarize only the useful information.
 
-Focus on:
-- Important discussion points
-- Decisions mentioned
-- Tasks or action items mentioned
-- Task owners if clearly mentioned
-- Deadlines if clearly mentioned
+            Focus on:
+            - Important discussion points
+            - Decisions mentioned
+            - Tasks or action items mentioned
+            - Task owners if clearly mentioned
+            - Deadlines if clearly mentioned
 
-Ignore:
-- Greetings
-- Small talk
-- Jokes
-- Repeated information
+            Ignore:
+            - Greetings
+            - Small talk
+            - Jokes
+            - Repeated information
 
-Do not invent information.
+            Do not invent information.
 
-Meeting Chunk:
-{chunk}
-""",
+            Meeting Chunk:
+            {chunk}
+            """,
             input_variables=["chunk"],
         )
 
         self.final_prompt = PromptTemplate(
             template="""
-You are an expert meeting assistant.
+            You are an expert meeting assistant.
 
-Below is information extracted from different parts
-of a meeting transcript.
+            Below is information extracted from different parts
+            of a meeting transcript.
 
-Create the final meeting knowledge.
+            Create the final meeting knowledge.
 
-Rules:
+            Rules:
 
-1. Do not invent information.
-2. Do not create a task unless the meeting indicates
-   that an action needs to be performed.
-3. Do not invent task owners.
-4. DO NOT extract, calculate, interpret, or assign
-   any deadline.
-5. Always return deadline_date as null.
-6. If the meeting mentions a deadline, ignore the
-   deadline because it will be assigned manually later.
-7. If the meeting explicitly mentions a priority,
-   use: low, medium, or high.
-8. If priority is not mentioned, return null.
-9. New tasks should normally have status "pending".
-10. A decision means something the team actually decided
-    or agreed upon.
-11. Keep the summary concise but informative.
+            1. Do not invent information.
+            2. Do not create a task unless the meeting indicates
+            that an action needs to be performed.
+            3. Do not invent task owners.
+            4. DO NOT extract, calculate, interpret, or assign
+            any deadline.
+            5. Always return deadline_date as null.
+            6. If the meeting mentions a deadline, ignore the
+            deadline because it will be assigned manually later.
+            7. If the meeting explicitly mentions a priority,
+            use: low, medium, or high.
+            8. If priority is not mentioned, return null.
+            9. New tasks should normally have status "pending".
+            10. A decision means something the team actually decided
+                or agreed upon.
+            11. Keep the summary concise but informative.
 
-Meeting Information:
+            Meeting Information:
 
-{chunk_information}
-""",
+            {chunk_information}
+            """,
             input_variables=["chunk_information"],
         )
 
@@ -199,7 +196,6 @@ Meeting Information:
     # ========================================================
     # PROCESS MEETING
     # ========================================================
-
     def process_meeting(self, state: MeetingState):
 
         print("Generating Meeting Knowledge...")

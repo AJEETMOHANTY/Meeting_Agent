@@ -1,16 +1,9 @@
 # ============================================================
 # STEP J: DATABASE SAVING
-#
-# Saves meeting information and transcript embeddings
-# into PostgreSQL.
+# Saves meeting information and transcript embeddings into PostgreSQL.
 # ============================================================
-
 from backend.database.a_connection import SessionLocal
-from backend.database.c_crud import (
-    create_meeting,
-    create_decision,
-    create_task,
-)
+from backend.database.c_crud import create_meeting, create_decision, create_task
 from backend.meeting.i_state import MeetingState
 from backend.meeting.f_embeddings import MeetingEmbeddings
 

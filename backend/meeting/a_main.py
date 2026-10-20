@@ -15,7 +15,6 @@
 # ============================================================
 
 from langgraph.graph import StateGraph, START, END
-
 from backend.meeting.i_state import MeetingState
 from backend.meeting.b_transcript import WhisperTranscriber
 from backend.meeting.c_validation import validate_transcript
