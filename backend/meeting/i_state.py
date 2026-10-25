@@ -37,7 +37,7 @@ class MeetingKnowledge(BaseModel):
 # LANGGRAPH STATE: This is the information passed between pipeline nodes.
 # ============================================================
 class MeetingState(TypedDict):
-
+    meeting_id: int # Stores the ID generated when the meeting is saved.
     audio_path: str
     transcript: str
     summary: str

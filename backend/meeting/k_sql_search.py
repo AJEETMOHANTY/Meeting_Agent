@@ -1,8 +1,5 @@
 # ============================================================
-# STEP K: SQL RETRIEVAL TOOL
-#
-# Retrieves structured meeting information from PostgreSQL.
-# This will later be used by our Agentic RAG system.
+# SQL RETRIEVAL TOOL: Retrieves structured meeting information from PostgreSQL. This will later be used by our Agentic RAG system.
 # ============================================================
 
 from backend.database.a_connection import SessionLocal

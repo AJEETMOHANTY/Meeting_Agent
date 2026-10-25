@@ -1,6 +1,5 @@
 # ============================================================
-# STEP J: DATABASE SAVING
-# Saves meeting information and transcript embeddings into PostgreSQL.
+# DATABASE SAVING: Saves meeting information and transcript embeddings into PostgreSQL.
 # ============================================================
 from backend.database.a_connection import SessionLocal
 from backend.database.c_crud import create_meeting, create_decision, create_task
@@ -22,7 +21,7 @@ def save_meeting(state: MeetingState):
         # 1. Save the meeting and its complete transcript.
         meeting = create_meeting(
             db=db,
-            title=state.get("title", "Meeting"),
+            title=state.get("title", "Meeting"), # Make the title generation based on the meeting content in the future.
             transcript=state["transcript"],
             summary=state["summary"],
         )

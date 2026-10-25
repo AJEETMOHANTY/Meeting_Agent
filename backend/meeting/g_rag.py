@@ -1,8 +1,5 @@
 # ============================================================
-# STEP G: VECTOR SEARCH
-#
-# This file searches stored meeting transcript chunks using
-# semantic similarity.
+# SEMANTIC VECTOR SEARCH: This file searches stored meeting transcript chunks using semantic similarity.
 # ============================================================
 
 from langchain_huggingface import HuggingFaceEmbeddings

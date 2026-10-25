@@ -1,6 +1,5 @@
 # ============================================================
-# TRANSCRIPTION:
-# This file converts meeting audio/video into text using the Faster-Whisper model.
+# TRANSCRIPTION: This file converts meeting audio/video into text.
 # ============================================================
 
 from faster_whisper import WhisperModel
