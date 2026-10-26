@@ -2,6 +2,8 @@ import os  # Reads environment variables.
 import requests  # Sends HTTP requests to the FastAPI backend.
 import streamlit as st  # Builds the web interface.
 from datetime import datetime  # Formats meeting creation dates and times.
+import hashlib
+
 
 # Configures the browser tab and wide page layout.
 st.set_page_config(
@@ -313,6 +315,71 @@ def ask_backend(meeting_id, question):
     return data.get("answer", "The backend returned no answer.")
 
 
+def transcribe_backend(audio_bytes):
+    response = requests.post(
+        f"{API_URL}/voice/transcribe",
+        files={
+            "audio": (
+                "recording.wav",
+                audio_bytes,
+                "audio/wav",
+            )
+        },
+        data={"language_code": "en-IN"},
+        timeout=60,
+    )
+
+    response.raise_for_status()
+    data = response.json()
+
+    return data.get("transcript", "").strip()
+
+
+def stream_speech_backend(text):
+    """Receive Gnani's streamed audio and prepare a playable WAV."""
+    response = requests.post(
+        f"{API_URL}/voice/synthesize/stream",
+        json={"text": text},
+        stream=True,
+        timeout=(10, 120),
+    )
+
+    response.raise_for_status()
+
+    audio_bytes = bytearray()
+
+    try:
+        for chunk in response.iter_content(chunk_size=8192):
+            if chunk:
+                audio_bytes.extend(chunk)
+    finally:
+        response.close()
+
+    # Check that the response contains a WAV file.
+    data_offset = audio_bytes.find(b"data")
+
+    if (
+        len(audio_bytes) < 44
+        or audio_bytes[:4] != b"RIFF"
+        or audio_bytes[8:12] != b"WAVE"
+        or data_offset < 0
+    ):
+        raise RuntimeError("The streaming endpoint returned invalid WAV audio.")
+
+    # Replace Gnani's streaming size placeholders with actual sizes.
+    import struct
+
+    struct.pack_into("<I", audio_bytes, 4, len(audio_bytes) - 8)
+    struct.pack_into(
+        "<I",
+        audio_bytes,
+        data_offset + 4,
+        len(audio_bytes) - data_offset - 8,
+    )
+
+    return bytes(audio_bytes)
+
+
 # Uploads a recording to the existing meeting-processing API.
 def upload_meeting(uploaded_file):
     response = requests.post(
@@ -333,16 +400,16 @@ def upload_meeting(uploaded_file):
 
 # Fetches previously saved meetings from the backend.
 def fetch_meetings():
-    health = requests.get(f"{API_URL}/health", timeout=5)
+    # Allow a little more time for the backend health check.
+    health = requests.get(f"{API_URL}/health", timeout=15)
     health.raise_for_status()
 
-    response = requests.get(f"{API_URL}/meetings/", timeout=10)
+    # Fetch saved meetings from FastAPI.
+    response = requests.get(f"{API_URL}/meetings/", timeout=30)
     response.raise_for_status()
 
     return response.json()
-    
 
-    
 
 
 
@@ -350,6 +417,9 @@ def fetch_meetings():
 def load_saved_meetings():
     try:
         saved_meetings = fetch_meetings()
+
+        # Build a fresh dictionary from the backend's current data.
+        refreshed_meetings = {}
 
         for meeting in saved_meetings:
             meeting_id = int(meeting["meeting_id"])
@@ -364,8 +434,7 @@ def load_saved_meetings():
             else:
                 meeting_date = "Date unavailable"
 
-            # Save the meeting data first.
-            st.session_state.meetings[meeting_id] = {
+            refreshed_meetings[meeting_id] = {
                 "meeting_id": meeting_id,
                 "title": meeting.get("title") or "Untitled Meeting",
                 "date": meeting_date,
@@ -374,16 +443,21 @@ def load_saved_meetings():
                 "tasks": meeting.get("tasks", []),
             }
 
-            
+        # Remove meetings that no longer exist in the backend.
+        st.session_state.meetings = refreshed_meetings
 
-            
+        # Clear the selection if its meeting was deleted.
+        selected_id = st.session_state.get("selected_meeting_id")
+        if selected_id is not None and selected_id not in refreshed_meetings:
+            st.session_state.selected_meeting_id = None
 
         st.session_state.meetings_loaded = True
 
     except requests.RequestException as error:
         st.warning(f"Could not load saved meetings: {error}")
+        
 
-    
+
     
 # Initializes the application state.
 initialize_state()
@@ -580,7 +654,7 @@ else:
 
     # Keeps meeting content in a fixed-height scrollable panel.
     with details_col:
-        with st.container(height=420, border=True):
+        with st.container(height=535, border=True):
             st.subheader("📝 Summary")
             st.write(selected_meeting.get("summary", "No summary available."))
 
@@ -609,48 +683,141 @@ else:
             else:
                 st.caption("No tasks available.")
 
-    # Keep your existing chat interface inside this column.
-    
-    # Displays the Meeting Agent chat interface.
-    
-
-
-
     # Keeps chat history and the input aligned with the meeting panel.
+    
     with chat_col:
         st.subheader("Meeting Agent")
 
         chat_key = str(selected_id)
+
         if chat_key not in st.session_state.chats:
             st.session_state.chats[chat_key] = []
 
-        # Shorter history area leaves room for the question input.
-        # Reserves space for the chat input beneath the message history.
+        # Remember which voice recording has already been processed.
+        if "processed_voice_hashes" not in st.session_state:
+            st.session_state.processed_voice_hashes = {}
+
+        # Display existing chat messages.  
         with st.container(height=287, border=True):
             for message in st.session_state.chats[chat_key]:
                 with st.chat_message(message["role"]):
                     st.write(message["content"])
 
+                    # Voice answers include audio; typed answers do not.
+                    if message.get("audio"):
+                        st.audio(message["audio"], format="audio/wav")
+
+
+        # Record a voice question.
+        audio_value = st.audio_input(
+            "Ask your meeting question by voice",
+            key=f"voice_input_{selected_id}",
+        )
+
+        # Process a new recording only once.
+        if audio_value is not None:
+            audio_bytes = audio_value.getvalue()
+            audio_hash = hashlib.sha256(audio_bytes).hexdigest()
+
+            previous_hash = st.session_state.processed_voice_hashes.get(
+                chat_key
+            )
+
+            if audio_bytes and audio_hash != previous_hash:
+                # Mark the recording before processing to prevent
+                # duplicate requests during Streamlit reruns.
+                st.session_state.processed_voice_hashes[chat_key] = (
+                    audio_hash
+                )
+
+                try:
+                    with st.spinner("Transcribing your voice..."):
+                        transcript = transcribe_backend(audio_bytes)
+
+                    if not transcript:
+                        raise ValueError(
+                            "No speech was recognized. Please try again."
+                        )
+
+                    # Display the recognized question in chat.
+                    st.session_state.chats[chat_key].append(
+                        {
+                            "role": "user",
+                            "content": transcript,
+                        }
+                    )
+
+                    
+                    
+                    # Send the transcript to the existing Meeting Agent.
+                    with st.spinner("Meeting Agent is thinking..."):
+                        answer = ask_backend(selected_id, transcript)
+
+                    # Generate spoken audio only for voice questions.
+                    with st.spinner("Generating spoken answer..."):
+                        answer_audio = stream_speech_backend(str(answer))
+
+                    st.session_state.chats[chat_key].append(
+                        {
+                            "role": "assistant",
+                            "content": str(answer),
+                            "audio": answer_audio,
+                        }
+                    )
+
+
+                except requests.RequestException as error:
+                    st.session_state.chats[chat_key].append(
+                        {
+                            "role": "assistant",
+                            "content": (
+                                f"Voice request failed: {error}"
+                            ),
+                        }
+                    )
+
+                except (ValueError, RuntimeError) as error:
+                    st.session_state.chats[chat_key].append(
+                        {
+                            "role": "assistant",
+                            "content": str(error),
+                        }
+                    )
+
+                st.rerun()
+
+        # Existing typed-question functionality.
         question = st.chat_input(
             "Ask about this meeting...",
             key=f"chat_input_{selected_id}",
         )
 
         if question:
-            st.session_state.chats[chat_key].append({"role": "user", "content": question})
+            st.session_state.chats[chat_key].append(
+                {
+                    "role": "user",
+                    "content": question,
+                }
+            )
 
             try:
                 with st.spinner("Thinking..."):
                     answer = ask_backend(selected_id, question)
 
                 st.session_state.chats[chat_key].append(
-                    {"role": "assistant", "content": str(answer)}
+                    {
+                        "role": "assistant",
+                        "content": str(answer),
+                    }
                 )
+
             except requests.RequestException as error:
                 st.session_state.chats[chat_key].append(
                     {
                         "role": "assistant",
-                        "content": f"Could not reach the chatbot API: {error}",
+                        "content": (
+                            f"Could not reach the chatbot API: {error}"
+                        ),
                     }
                 )
 

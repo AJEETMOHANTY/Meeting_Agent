@@ -22,11 +22,19 @@ class Meeting(Base):
     summary = Column(Text)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
-    # One meeting can have many tasks.
-    tasks = relationship("Task", back_populates="meeting")
+    tasks = relationship(
+    "Task",
+    back_populates="meeting",
+    cascade="all, delete-orphan",
+    passive_deletes=True,
+    )
 
-    # One meeting can have many decisions.
-    decisions = relationship("Decision", back_populates="meeting")
+    decisions = relationship(
+        "Decision",
+        back_populates="meeting",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 # ============================================================
@@ -36,7 +44,11 @@ class Decision(Base):
     __tablename__ = "decision"
 
     id = Column(Integer, primary_key=True, index=True)
-    meeting_id = Column(Integer, ForeignKey("meeting.id"))
+    meeting_id = Column(
+    Integer,
+    ForeignKey("meeting.id", ondelete="CASCADE"),
+    nullable=False,
+)
     decision = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
@@ -51,7 +63,11 @@ class Task(Base):
     __tablename__ = "task"
 
     id = Column(Integer, primary_key=True, index=True)
-    meeting_id = Column(Integer, ForeignKey("meeting.id"))
+    meeting_id = Column(
+    Integer,
+    ForeignKey("meeting.id", ondelete="CASCADE"),
+    nullable=False,
+)
     task = Column(Text, nullable=False)
     owner = Column(String)
     deadline_date = Column(Date)

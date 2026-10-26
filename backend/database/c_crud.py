@@ -73,8 +73,9 @@ def update_meeting(db: Session, meeting_id: int, title: str):
 
     return meeting
 
+
 # ==========================
-# DELETE MEETING
+# DELETE MEETING AND RELATED DATA
 # ==========================
 def delete_meeting(db: Session, meeting_id: int):
     meeting = get_meeting_by_id(db, meeting_id)
@@ -82,10 +83,15 @@ def delete_meeting(db: Session, meeting_id: int):
     if meeting is None:
         return None
 
-    db.delete(meeting)
-    db.commit()
+    try:
+        db.delete(meeting)
+        db.commit()
+        return True
 
-    return True
+    except Exception:
+        db.rollback()
+        raise
+
 
 # ============================================================
 # DECISION CRUD:

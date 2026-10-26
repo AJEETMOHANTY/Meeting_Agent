@@ -1,24 +1,61 @@
 
-import numpy as np
-from faster_whisper import WhisperModel
+import os
+import requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 class VoiceSpeechToText:
     def __init__(self):
-        # Load Whisper once for local speech recognition.
-        self.model = WhisperModel(
-            "base",
-            device="cpu",
-            compute_type="int8"
+        self.api_key = os.getenv("GNANI_API_KEY")
+
+        if not self.api_key:
+            raise RuntimeError(
+                "GNANI_API_KEY is missing from the environment."
+            )
+
+        self.api_url = "https://api.vachana.ai/stt/v3"
+
+    def transcribe_bytes(
+        self,
+        audio_bytes: bytes,
+        language_code: str = "en-IN",
+        filename: str = "recording.wav",
+    ) -> str:
+        if not audio_bytes:
+            raise ValueError("Audio recording is empty.")
+
+        response = requests.post(
+            self.api_url,
+            headers={"X-API-Key-ID": self.api_key},
+            files={
+                "audio_file": (
+                    filename,
+                    audio_bytes,
+                    "audio/wav",
+                )
+            },
+            data={
+                "language_code": language_code,
+                "format": "transcribe",
+            },
+            timeout=60,
         )
 
-    def transcribe(self, audio: np.ndarray) -> str:
-        # Convert microphone audio from int16 to float32.
-        audio = audio.astype(np.float32) / 32768.0
+        response.raise_for_status()
+        result = response.json()
 
-        # Recognize speech directly from memory.
-        segments, _ = self.model.transcribe(audio)
+        if not result.get("success"):
+            raise RuntimeError(
+                f"Gnani transcription failed: {result}"
+            )
 
-        return " ".join(
-            segment.text.strip() for segment in segments
-        ).strip()
+        transcript = result.get("transcript", "").strip()
+
+        if not transcript:
+            raise RuntimeError(
+                "Gnani returned an empty transcript."
+            )
+
+        return transcript
