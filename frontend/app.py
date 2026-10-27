@@ -3,6 +3,8 @@ import requests  # Sends HTTP requests to the FastAPI backend.
 import streamlit as st  # Builds the web interface.
 from datetime import datetime  # Formats meeting creation dates and times.
 import hashlib
+import base64
+import streamlit.components.v1 as components
 
 
 # Configures the browser tab and wide page layout.
@@ -411,8 +413,6 @@ def fetch_meetings():
     return response.json()
 
 
-
-
 # Loads saved meetings and formats their database timestamps.
 def load_saved_meetings():
     try:
@@ -455,10 +455,8 @@ def load_saved_meetings():
 
     except requests.RequestException as error:
         st.warning(f"Could not load saved meetings: {error}")
-        
 
 
-    
 # Initializes the application state.
 initialize_state()
 
@@ -684,7 +682,7 @@ else:
                 st.caption("No tasks available.")
 
     # Keeps chat history and the input aligned with the meeting panel.
-    
+
     with chat_col:
         st.subheader("Meeting Agent")
 
@@ -697,16 +695,33 @@ else:
         if "processed_voice_hashes" not in st.session_state:
             st.session_state.processed_voice_hashes = {}
 
-        # Display existing chat messages.  
+        # Display existing chat messages.
         with st.container(height=287, border=True):
             for message in st.session_state.chats[chat_key]:
                 with st.chat_message(message["role"]):
                     st.write(message["content"])
 
                     # Voice answers include audio; typed answers do not.
-                    if message.get("audio"):
-                        st.audio(message["audio"], format="audio/wav")
+                    # Audio is base64-encoded to embed directly in the HTML audio tag.
+                    
 
+
+                    if message.get("audio"):
+                        if message.get("autoplay", False):
+                            st.audio(
+                                message["audio"],
+                                format="audio/wav",
+                                autoplay=True,
+                            )
+
+                            # Avoid requesting autoplay again on subsequent reruns.
+                            message["autoplay"] = False
+
+                        else:
+                            st.audio(
+                                message["audio"],
+                                format="audio/wav",
+                            )
 
         # Record a voice question.
         audio_value = st.audio_input(
@@ -747,8 +762,6 @@ else:
                         }
                     )
 
-                    
-                    
                     # Send the transcript to the existing Meeting Agent.
                     with st.spinner("Meeting Agent is thinking..."):
                         answer = ask_backend(selected_id, transcript)
@@ -762,9 +775,9 @@ else:
                             "role": "assistant",
                             "content": str(answer),
                             "audio": answer_audio,
+                            "autoplay": True,
                         }
                     )
-
 
                 except requests.RequestException as error:
                     st.session_state.chats[chat_key].append(
