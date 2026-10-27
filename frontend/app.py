@@ -317,6 +317,19 @@ def ask_backend(meeting_id, question):
     return data.get("answer", "The backend returned no answer.")
 
 
+def fetch_chat_history(meeting_id):
+    """Fetch saved conversation messages for a meeting."""
+
+    response = requests.get(
+        f"{API_URL}/chat/{int(meeting_id)}/history",
+        timeout=30,
+    )
+    response.raise_for_status()
+
+    data = response.json()
+    return data.get("messages", [])
+
+
 def transcribe_backend(audio_bytes):
     response = requests.post(
         f"{API_URL}/voice/transcribe",
@@ -686,10 +699,18 @@ else:
     with chat_col:
         st.subheader("Meeting Agent")
 
+        
         chat_key = str(selected_id)
 
         if chat_key not in st.session_state.chats:
-            st.session_state.chats[chat_key] = []
+            try:
+                st.session_state.chats[chat_key] = fetch_chat_history(
+                    selected_id
+                )
+            except requests.RequestException as error:
+                st.session_state.chats[chat_key] = []
+                st.error(f"Could not load chat history: {error}")
+
 
         # Remember which voice recording has already been processed.
         if "processed_voice_hashes" not in st.session_state:
