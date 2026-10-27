@@ -224,6 +224,7 @@ def initialize_state():
         "task_checks": {},
         "show_uploader": False,
         "meetings_loaded": False,
+        "editing_meeting_title": {},
     }
 
     for key, value in defaults.items():
@@ -258,7 +259,7 @@ def store_meeting(response_data, filename):
 
     st.session_state.meetings[meeting_id] = {
         "meeting_id": meeting_id,
-        "title": response_data.get("title") or filename.rsplit(".", 1)[0],
+        "title": response_data.get("title") or f"Meeting {meeting_id}",
         "date": meeting_date,
         "summary": response_data.get("summary", "No summary available."),
         "decisions": response_data.get("decisions", []),
@@ -653,12 +654,83 @@ if selected_meeting is None:
     )
 
 else:
-    # Displays the selected meeting's fixed header.
-    st.title(selected_meeting.get("title", "Meeting"))
+    
+    
+    # Display the meeting title as a heading, with optional edit mode.
+    current_title = selected_meeting.get(
+        "title",
+        f"Meeting {selected_id}",
+    )
+
+    editing_titles = st.session_state.editing_meeting_title
+    is_editing = editing_titles.get(str(selected_id), False)
+
+    if not is_editing:
+        heading_col, edit_col = st.columns([10, 1])
+
+        with heading_col:
+            st.title(current_title)
+
+        with edit_col:
+            st.write("")
+            if st.button(
+                "✏️",
+                key=f"edit_title_{selected_id}",
+                help="Edit meeting title",
+            ):
+                editing_titles[str(selected_id)] = True
+                st.rerun()
+
+    else:
+        with st.form(key=f"title_form_{selected_id}"):
+            edited_title = st.text_input(
+                "Meeting title",
+                value=current_title,
+                max_chars=150,
+            )
+
+            save_col, cancel_col = st.columns(2)
+            save_clicked = save_col.form_submit_button("Save")
+            cancel_clicked = cancel_col.form_submit_button("Cancel")
+
+            if save_clicked:
+                cleaned_title = edited_title.strip()
+
+                if not cleaned_title:
+                    st.warning("Meeting title cannot be empty.")
+                elif cleaned_title == current_title:
+                    editing_titles[str(selected_id)] = False
+                    st.rerun()
+                else:
+                    try:
+                        response = requests.patch(
+                            f"{API_URL}/meetings/{selected_id}/title",
+                            json={"title": cleaned_title},
+                            timeout=15,
+                        )
+                        response.raise_for_status()
+
+                        saved_title = response.json()["title"]
+                        st.session_state.meetings[selected_id]["title"] = (
+                            saved_title
+                        )
+                        editing_titles[str(selected_id)] = False
+                        st.rerun()
+
+                    except requests.RequestException as error:
+                        st.error(
+                            f"Could not update meeting title: {error}"
+                        )
+
+            if cancel_clicked:
+                editing_titles[str(selected_id)] = False
+                st.rerun()
+
     st.caption(
         f"Meeting ID: {selected_meeting.get('meeting_id', selected_id)}"
         f" · {selected_meeting.get('date', 'Date unavailable')}"
     )
+
 
     # Creates the meeting and chat panels only when a meeting is selected.
     details_col, chat_col = st.columns([1.5, 1], gap="medium")

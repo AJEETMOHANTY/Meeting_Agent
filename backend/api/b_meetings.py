@@ -9,6 +9,14 @@ from backend.meeting.a_main import graph
 from backend.database.a_connection import SessionLocal
 from backend.database.c_crud import get_all_meetings,get_decisions_by_meeting_id,get_tasks_by_meeting_id
 from backend.database.c_crud import delete_meeting
+from backend.database.c_crud import (
+    get_all_meetings,
+    get_decisions_by_meeting_id,
+    get_tasks_by_meeting_id,
+    delete_meeting,
+    update_meeting,
+)
+from pydantic import BaseModel, Field
 
 
 router = APIRouter(prefix="/meetings", tags=["Meetings"])
@@ -67,9 +75,6 @@ async def upload_meeting(file: UploadFile = File(...)):
         temp_path.unlink(missing_ok=True)
         await file.close()
         
-# Retrieve all previously saved meetings from PostgreSQL.
-
-# Retrieve saved meetings with their creation timestamps.
 
 # Retrieves all saved meetings, including their decisions and tasks.
 @router.get("/")
@@ -116,6 +121,38 @@ def get_meetings():
 
         return meeting_list
 
+    finally:
+        db.close()
+
+class MeetingTitleUpdate(BaseModel):
+    title: str = Field(min_length=1, max_length=150)
+
+@router.patch("/{meeting_id}/title")
+def rename_meeting(meeting_id: int, request: MeetingTitleUpdate):
+    title = request.title.strip()
+
+    if not title:
+        raise HTTPException(
+            status_code=400,
+            detail="Meeting title cannot be empty.",
+        )
+
+    db = SessionLocal()
+
+    try:
+        meeting = update_meeting(db, meeting_id, title)
+
+        if meeting is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Meeting not found.",
+            )
+
+        return {
+            "meeting_id": meeting.id,
+            "title": meeting.title,
+            "message": "Meeting title updated successfully.",
+        }
     finally:
         db.close()
 
