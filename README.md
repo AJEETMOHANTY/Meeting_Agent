@@ -17,7 +17,7 @@ This Meeting Assistant converts meeting recordings into structured insights, inc
 | Frontend            | Streamlit                                   |
 | Backend API         | FastAPI                                     |
 | AI workflow         | LangGraph                                   |
-| LLM                 | Current provider; Gnani integration planned |
+| LLM                 | Gnani & Gemini                              |
 | Speech-to-Text      | faster-whisper and Gnani STT                |
 | Text-to-Speech      | Gnani TTS                                   |
 | Relational database | PostgreSQL                                  |
