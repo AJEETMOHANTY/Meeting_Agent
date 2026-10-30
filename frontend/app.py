@@ -6,7 +6,6 @@ import hashlib
 import base64
 import streamlit.components.v1 as components
 
-
 # Configures the browser tab and wide page layout.
 st.set_page_config(
     page_title="Allen V2 | Meeting Intelligence",
@@ -35,7 +34,7 @@ st.markdown(
         /* Main workspace spacing. */
         div[data-testid="stMainBlockContainer"] {
             max-width: 1900px;
-            padding-top: 2.0`rem;
+            padding-top: 2.0rem;
             padding-bottom: 0.5rem;
             padding-left: 1.2rem;
             padding-right: 1.2rem;
@@ -635,7 +634,6 @@ with st.sidebar:
 selected_id = st.session_state.selected_meeting_id
 selected_meeting = st.session_state.meetings.get(selected_id)
 
-
 # Shows a welcome screen when no meeting is selected.
 if selected_meeting is None:
     st.markdown(
@@ -654,8 +652,6 @@ if selected_meeting is None:
     )
 
 else:
-    
-    
     # Display the meeting title as a heading, with optional edit mode.
     current_title = selected_meeting.get(
         "title",
@@ -731,11 +727,29 @@ else:
         f" · {selected_meeting.get('date', 'Date unavailable')}"
     )
 
+    # Initialize chat visibility once per session.
+    if "chat_visible" not in st.session_state:
+        st.session_state.chat_visible = True
 
-    # Creates the meeting and chat panels only when a meeting is selected.
-    details_col, chat_col = st.columns([1.5, 1], gap="medium")
+    # Keep the toggle button in the same place, above the panels.
+    button_label = (
+        "✕ Close Chat"
+        if st.session_state.chat_visible
+        else "💬 Open Chat"
+    )
 
-    # Keeps meeting content in a fixed-height scrollable panel.
+    if st.button(button_label, key="toggle_chat"):
+        st.session_state.chat_visible = not st.session_state.chat_visible
+        st.rerun()
+
+    # Create two columns when chat is open; use full width when closed.
+    if st.session_state.chat_visible:
+        details_col, chat_col = st.columns([1.5, 1], gap="medium")
+    else:
+        details_col = st.container()
+        chat_col = None
+
+    # Meeting summary, decisions, and tasks.
     with details_col:
         with st.container(height=535, border=True):
             st.subheader("📝 Summary")
@@ -766,109 +780,145 @@ else:
             else:
                 st.caption("No tasks available.")
 
-    # Keeps chat history and the input aligned with the meeting panel.
+    # Entire chat interface must stay inside the right-hand column.
+    if chat_col is not None:
+        with chat_col:
+            st.subheader("Chat")
 
-    with chat_col:
-        st.subheader("Meeting Agent")
+            chat_key = str(selected_id)
 
-        
-        chat_key = str(selected_id)
+            if chat_key not in st.session_state.chats:
+                try:
+                    st.session_state.chats[chat_key] = fetch_chat_history(
+                        selected_id
+                    )
+                except requests.RequestException as error:
+                    st.session_state.chats[chat_key] = []
+                    st.error(f"Could not load chat history: {error}")
 
-        if chat_key not in st.session_state.chats:
-            try:
-                st.session_state.chats[chat_key] = fetch_chat_history(
-                    selected_id
+            # Remember which voice recording has already been processed.
+            if "processed_voice_hashes" not in st.session_state:
+                st.session_state.processed_voice_hashes = {}
+
+            # Display existing chat messages.
+            with st.container(height=287, border=True):
+                for message in st.session_state.chats[chat_key]:
+                    with st.chat_message(message["role"]):
+                        st.write(message["content"])
+
+                        # Voice answers include audio; typed answers do not.
+                        if message.get("audio"):
+                            if message.get("autoplay", False):
+                                st.audio(
+                                    message["audio"],
+                                    format="audio/wav",
+                                    autoplay=True,
+                                )
+                                # Avoid requesting autoplay on later reruns.
+                                message["autoplay"] = False
+                            else:
+                                st.audio(
+                                    message["audio"],
+                                    format="audio/wav",
+                                )
+
+            # Record a voice question.
+            audio_value = st.audio_input(
+                "Ask your meeting question by voice",
+                key=f"voice_input_{selected_id}",
+            )
+            
+            
+
+            # Process a new recording only once.
+            if audio_value is not None:
+                audio_bytes = audio_value.getvalue()
+                audio_hash = hashlib.sha256(audio_bytes).hexdigest()
+
+                previous_hash = st.session_state.processed_voice_hashes.get(
+                    chat_key
                 )
-            except requests.RequestException as error:
-                st.session_state.chats[chat_key] = []
-                st.error(f"Could not load chat history: {error}")
 
+                if audio_bytes and audio_hash != previous_hash:
+                    # Mark before processing to prevent duplicate requests.
+                    st.session_state.processed_voice_hashes[chat_key] = (
+                        audio_hash
+                    )
 
-        # Remember which voice recording has already been processed.
-        if "processed_voice_hashes" not in st.session_state:
-            st.session_state.processed_voice_hashes = {}
+                    try:
+                        with st.spinner("Transcribing your voice..."):
+                            transcript = transcribe_backend(audio_bytes)
 
-        # Display existing chat messages.
-        with st.container(height=287, border=True):
-            for message in st.session_state.chats[chat_key]:
-                with st.chat_message(message["role"]):
-                    st.write(message["content"])
-
-                    # Voice answers include audio; typed answers do not.
-                    # Audio is base64-encoded to embed directly in the HTML audio tag.
-                    
-
-
-                    if message.get("audio"):
-                        if message.get("autoplay", False):
-                            st.audio(
-                                message["audio"],
-                                format="audio/wav",
-                                autoplay=True,
+                        if not transcript:
+                            raise ValueError(
+                                "No speech was recognized. Please try again."
                             )
 
-                            # Avoid requesting autoplay again on subsequent reruns.
-                            message["autoplay"] = False
+                        # Display the recognized question in chat.
+                        st.session_state.chats[chat_key].append(
+                            {
+                                "role": "user",
+                                "content": transcript,
+                            }
+                        )
 
-                        else:
-                            st.audio(
-                                message["audio"],
-                                format="audio/wav",
-                            )
+                        # Send the transcript to the existing Meeting Agent.
+                        with st.spinner("Meeting Agent is thinking..."):
+                            answer = ask_backend(selected_id, transcript)
 
-        # Record a voice question.
-        audio_value = st.audio_input(
-            "Ask your meeting question by voice",
-            key=f"voice_input_{selected_id}",
-        )
+                        # Generate spoken audio only for voice questions.
+                        with st.spinner("Generating spoken answer..."):
+                            answer_audio = stream_speech_backend(str(answer))
 
-        # Process a new recording only once.
-        if audio_value is not None:
-            audio_bytes = audio_value.getvalue()
-            audio_hash = hashlib.sha256(audio_bytes).hexdigest()
+                        st.session_state.chats[chat_key].append(
+                            {
+                                "role": "assistant",
+                                "content": str(answer),
+                                "audio": answer_audio,
+                                "autoplay": True,
+                            }
+                        )
 
-            previous_hash = st.session_state.processed_voice_hashes.get(
-                chat_key
+                    except requests.RequestException as error:
+                        st.session_state.chats[chat_key].append(
+                            {
+                                "role": "assistant",
+                                "content": f"Voice request failed: {error}",
+                            }
+                        )
+
+                    except (ValueError, RuntimeError) as error:
+                        st.session_state.chats[chat_key].append(
+                            {
+                                "role": "assistant",
+                                "content": str(error),
+                            }
+                        )
+
+                    st.rerun()
+
+            # Existing typed-question functionality.
+            question = st.chat_input(
+                "Ask about this meeting...",
+                key=f"chat_input_{selected_id}",
             )
 
-            if audio_bytes and audio_hash != previous_hash:
-                # Mark the recording before processing to prevent
-                # duplicate requests during Streamlit reruns.
-                st.session_state.processed_voice_hashes[chat_key] = (
-                    audio_hash
+            if question:
+                st.session_state.chats[chat_key].append(
+                    {
+                        "role": "user",
+                        "content": question,
+                    }
                 )
 
                 try:
-                    with st.spinner("Transcribing your voice..."):
-                        transcript = transcribe_backend(audio_bytes)
-
-                    if not transcript:
-                        raise ValueError(
-                            "No speech was recognized. Please try again."
-                        )
-
-                    # Display the recognized question in chat.
-                    st.session_state.chats[chat_key].append(
-                        {
-                            "role": "user",
-                            "content": transcript,
-                        }
-                    )
-
-                    # Send the transcript to the existing Meeting Agent.
-                    with st.spinner("Meeting Agent is thinking..."):
-                        answer = ask_backend(selected_id, transcript)
-
-                    # Generate spoken audio only for voice questions.
-                    with st.spinner("Generating spoken answer..."):
-                        answer_audio = stream_speech_backend(str(answer))
+                    with st.spinner("Thinking..."):
+                        answer = ask_backend(selected_id, question)
 
                     st.session_state.chats[chat_key].append(
                         {
                             "role": "assistant",
                             "content": str(answer),
-                            "audio": answer_audio,
-                            "autoplay": True,
                         }
                     )
 
@@ -877,54 +927,9 @@ else:
                         {
                             "role": "assistant",
                             "content": (
-                                f"Voice request failed: {error}"
+                                f"Could not reach the chatbot API: {error}"
                             ),
                         }
                     )
 
-                except (ValueError, RuntimeError) as error:
-                    st.session_state.chats[chat_key].append(
-                        {
-                            "role": "assistant",
-                            "content": str(error),
-                        }
-                    )
-
                 st.rerun()
-
-        # Existing typed-question functionality.
-        question = st.chat_input(
-            "Ask about this meeting...",
-            key=f"chat_input_{selected_id}",
-        )
-
-        if question:
-            st.session_state.chats[chat_key].append(
-                {
-                    "role": "user",
-                    "content": question,
-                }
-            )
-
-            try:
-                with st.spinner("Thinking..."):
-                    answer = ask_backend(selected_id, question)
-
-                st.session_state.chats[chat_key].append(
-                    {
-                        "role": "assistant",
-                        "content": str(answer),
-                    }
-                )
-
-            except requests.RequestException as error:
-                st.session_state.chats[chat_key].append(
-                    {
-                        "role": "assistant",
-                        "content": (
-                            f"Could not reach the chatbot API: {error}"
-                        ),
-                    }
-                )
-
-            st.rerun()
