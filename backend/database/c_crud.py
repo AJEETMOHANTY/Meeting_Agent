@@ -184,6 +184,7 @@ def count_tasks(db: Session):
 # ==========================
 # UPDATE TASK
 # ==========================
+
 def update_task(
     db: Session,
     task_id: int,
@@ -193,13 +194,12 @@ def update_task(
     priority: str = None,
     status: str = None,
 ):
-
     existing_task = get_task_by_id(db, task_id)
 
     if existing_task is None:
         return None
 
-    # Update only the values provided.
+    # Update fields when values are provided.
     if task is not None:
         existing_task.task = task
 
@@ -215,10 +215,14 @@ def update_task(
     if status is not None:
         existing_task.status = status
 
-    db.commit()
-    db.refresh(existing_task)
+    try:
+        db.commit()
+        db.refresh(existing_task)
+        return existing_task
+    except Exception:
+        db.rollback()
+        raise
 
-    return existing_task
 
 
 # ==========================

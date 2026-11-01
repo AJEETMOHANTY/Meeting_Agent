@@ -766,19 +766,252 @@ else:
                 st.caption("No decisions available.")
 
             st.divider()
+            
             st.subheader("✅ Actionable Tasks")
 
-            tasks = selected_meeting.get("tasks") or []
-            if tasks:
-                for index, task in enumerate(tasks):
-                    task_key = f"{selected_id}_{index}"
-                    st.checkbox(
-                        task_text(task),
-                        value=st.session_state.task_checks.get(task_key, False),
-                        key=f"task_{task_key}",
+            # ---------- ADD TASK ----------
+            if st.button(
+                "➕ Add Task",
+                key=f"add_task_button_{selected_id}",
+            ):
+                st.session_state[f"show_add_task_{selected_id}"] = True
+
+            if st.session_state.get(f"show_add_task_{selected_id}", False):
+                with st.form(key=f"add_task_form_{selected_id}"):
+                    new_task_text = st.text_area("Task description")
+                    new_owner = st.text_input("Assigned to (person/role)")
+                    new_priority = st.selectbox(
+                        "Priority", ["Medium", "Low", "High"]
                     )
-            else:
-                st.caption("No tasks available.")
+                    new_status = st.selectbox(
+                        "Status", ["Pending", "In Progress", "Completed"]
+                    )
+                    new_deadline = st.date_input(
+                        "Deadline", value=None, format="YYYY-MM-DD"
+                    )
+
+                    save_add = st.form_submit_button("Save Task")
+                    cancel_add = st.form_submit_button("Cancel")
+
+                    if save_add:
+                        if not new_task_text.strip():
+                            st.warning("Please enter a task description.")
+                        else:
+                            try:
+                                response = requests.post(
+                                    f"{API_URL}/meetings/{selected_id}/tasks",
+                                    json={
+                                        "task": new_task_text.strip(),
+                                        "owner": new_owner.strip() or None,
+                                        "priority": new_priority,
+                                        "status": new_status.lower(),
+                                        "deadline_date": (
+                                            new_deadline.isoformat()
+                                            if new_deadline else None
+                                        ),
+                                    },
+                                    timeout=30,
+                                )
+                                response.raise_for_status()
+
+                                saved_task = response.json()["task"]
+                                selected_meeting.setdefault("tasks", []).append(
+                                    saved_task
+                                )
+                                st.session_state[
+                                    f"show_add_task_{selected_id}"
+                                ] = False
+                                st.success("Task added successfully.")
+                                st.rerun()
+
+                            except requests.RequestException as error:
+                                st.error(f"Could not add task: {error}")
+
+                    if cancel_add:
+                        st.session_state[
+                            f"show_add_task_{selected_id}"
+                        ] = False
+                        st.rerun()
+
+            st.divider()
+
+            # ---------- DISPLAY, EDIT AND DELETE TASKS ----------
+            tasks = selected_meeting.get("tasks") or []
+
+            if not tasks:
+                st.caption("No tasks available. Click Add Task to create one.")
+
+            for index, task in enumerate(tasks):
+                if isinstance(task, str):
+                    task = {"task": task}
+
+                task_id = task.get("id")
+                task_key = task_id if task_id is not None else index
+                edit_state_key = f"editing_task_{selected_id}_{task_key}"
+                delete_state_key = f"deleting_task_{selected_id}_{task_key}"
+
+                st.markdown(f"**{task_text(task)}**")
+
+                owner = task.get("owner") or "Unassigned"
+                priority = task.get("priority") or "Medium"
+                status = task.get("status") or "Pending"
+                deadline = task.get("deadline_date") or "Not set"
+
+                st.caption(
+                    f"Assigned to: {owner}  |  "
+                    f"Priority: {priority}  |  "
+                    f"Status: {status.title()}  |  "
+                    f"Deadline: {deadline}"
+                )
+
+                edit_col, delete_col = st.columns(2)
+
+                with edit_col:
+                    if st.button(
+                        "✏️ Edit",
+                        key=f"edit_button_{selected_id}_{task_key}",
+                        disabled=task_id is None,
+                        use_container_width=True,
+                    ):
+                        st.session_state[edit_state_key] = True
+                        st.rerun()
+
+                with delete_col:
+                    if st.button(
+                        "🗑️ Delete",
+                        key=f"delete_button_{selected_id}_{task_key}",
+                        disabled=task_id is None,
+                        use_container_width=True,
+                    ):
+                        st.session_state[delete_state_key] = True
+                        st.rerun()
+
+                # Edit form is prefilled with the existing task values.
+                if st.session_state.get(edit_state_key, False):
+                    with st.form(key=f"edit_task_form_{selected_id}_{task_key}"):
+                        edited_text = st.text_area(
+                            "Task description",
+                            value=task.get("task") or task.get("description") or "",
+                        )
+                        edited_owner = st.text_input(
+                            "Assigned to (person/role)",
+                            value=task.get("owner") or "",
+                        )
+
+                        priorities = ["Low", "Medium", "High"]
+                        current_priority = task.get("priority") or "Medium"
+                        priority_index = (
+                            priorities.index(current_priority.title())
+                            if current_priority.title() in priorities else 1
+                        )
+                        edited_priority = st.selectbox(
+                            "Priority", priorities, index=priority_index
+                        )
+
+                        statuses = ["Pending", "In Progress", "Completed"]
+                        current_status = (task.get("status") or "Pending").title()
+                        status_index = (
+                            statuses.index(current_status)
+                            if current_status in statuses else 0
+                        )
+                        edited_status = st.selectbox(
+                            "Status", statuses, index=status_index
+                        )
+
+                        from datetime import date as date_type
+
+                        raw_deadline = task.get("deadline_date")
+                        try:
+                            deadline_value = (
+                                date_type.fromisoformat(raw_deadline)
+                                if raw_deadline else None
+                            )
+                        except ValueError:
+                            deadline_value = None
+
+                        edited_deadline = st.date_input(
+                            "Deadline",
+                            value=deadline_value,
+                            format="YYYY-MM-DD",
+                        )
+
+                        save_edit = st.form_submit_button("Save Changes")
+                        cancel_edit = st.form_submit_button("Cancel")
+
+                        if save_edit:
+                            if not edited_text.strip():
+                                st.warning("Task description cannot be empty.")
+                            else:
+                                try:
+                                    response = requests.patch(
+                                        f"{API_URL}/meetings/{selected_id}/tasks/{task_id}",
+                                        json={
+                                            "task": edited_text.strip(),
+                                            "owner": edited_owner.strip() or None,
+                                            "priority": edited_priority,
+                                            "status": edited_status.lower(),
+                                            "deadline_date": (
+                                                edited_deadline.isoformat()
+                                                if edited_deadline else None
+                                            ),
+                                        },
+                                        timeout=30,
+                                    )
+                                    response.raise_for_status()
+
+                                    updated_task = response.json()["task"]
+                                    selected_meeting["tasks"][index] = updated_task
+                                    st.session_state[edit_state_key] = False
+                                    st.success("Task updated successfully.")
+                                    st.rerun()
+
+                                except requests.RequestException as error:
+                                    st.error(f"Could not update task: {error}")
+
+                        if cancel_edit:
+                            st.session_state[edit_state_key] = False
+                            st.rerun()
+
+                # Confirm before permanently deleting a task.
+                if st.session_state.get(delete_state_key, False):
+                    st.warning("Are you sure you want to delete this task?")
+                    confirm_col, cancel_col = st.columns(2)
+
+                    with confirm_col:
+                        if st.button(
+                            "Confirm Delete",
+                            key=f"confirm_delete_task_{selected_id}_{task_key}",
+                            type="primary",
+                        ):
+                            try:
+                                response = requests.delete(
+                                    f"{API_URL}/meetings/{selected_id}/tasks/{task_id}",
+                                    timeout=30,
+                                )
+                                response.raise_for_status()
+
+                                selected_meeting["tasks"] = [
+                                    item for item in selected_meeting["tasks"]
+                                    if isinstance(item, dict)
+                                    and item.get("id") != task_id
+                                ]
+                                st.session_state[delete_state_key] = False
+                                st.success("Task deleted successfully.")
+                                st.rerun()
+
+                            except requests.RequestException as error:
+                                st.error(f"Could not delete task: {error}")
+
+                    with cancel_col:
+                        if st.button(
+                            "Cancel",
+                            key=f"cancel_delete_task_{selected_id}_{task_key}",
+                        ):
+                            st.session_state[delete_state_key] = False
+                            st.rerun()
+
+                st.divider()
+
 
     # Entire chat interface must stay inside the right-hand column.
     if chat_col is not None:

@@ -18,6 +18,18 @@ from backend.database.c_crud import (
 )
 from pydantic import BaseModel, Field
 
+from datetime import date
+from typing import Optional
+
+from backend.database.b_models import Task
+from backend.database.c_crud import (
+    get_meeting_by_id,
+    get_task_by_id,
+    create_task,
+    update_task,
+    delete_task,
+)
+
 
 router = APIRouter(prefix="/meetings", tags=["Meetings"])
 
@@ -173,5 +185,168 @@ def remove_meeting(meeting_id: int):
             "message": "Meeting deleted successfully",
             "meeting_id": meeting_id,
         }
+    finally:
+        db.close()
+
+
+# ============================================================
+# TASK REQUEST MODELS
+# ============================================================
+
+class TaskCreate(BaseModel):
+    task: str = Field(min_length=1)
+    owner: Optional[str] = None
+    deadline_date: Optional[date] = None
+    priority: Optional[str] = None
+    status: str = "pending"
+
+
+class TaskUpdate(BaseModel):
+    task: str = Field(min_length=1)
+    owner: Optional[str] = None
+    deadline_date: Optional[date] = None
+    priority: Optional[str] = None
+    status: str = "pending"
+
+
+# ============================================================
+# TASK RESPONSE HELPER
+# ============================================================
+
+def task_to_dict(task):
+    return {
+        "id": task.id,
+        "meeting_id": task.meeting_id,
+        "task": task.task,
+        "owner": task.owner,
+        "deadline_date": (
+            task.deadline_date.isoformat()
+            if task.deadline_date
+            else None
+        ),
+        "priority": task.priority,
+        "status": task.status,
+    }
+
+
+# ============================================================
+# CREATE A TASK
+# POST /meetings/{meeting_id}/tasks
+# ============================================================
+
+@router.post("/{meeting_id}/tasks")
+def add_meeting_task(meeting_id: int, request: TaskCreate):
+    db = SessionLocal()
+
+    try:
+        meeting = get_meeting_by_id(db, meeting_id)
+
+        if meeting is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Meeting not found.",
+            )
+
+        task_text = request.task.strip()
+
+        if not task_text:
+            raise HTTPException(
+                status_code=400,
+                detail="Task description cannot be empty.",
+            )
+
+        task = create_task(
+            db=db,
+            meeting_id=meeting_id,
+            task=task_text,
+            owner=request.owner,
+            deadline_date=request.deadline_date,
+            priority=request.priority,
+            status=request.status,
+        )
+
+        return {
+            "message": "Task created successfully.",
+            "task": task_to_dict(task),
+        }
+
+    finally:
+        db.close()
+
+
+# ============================================================
+# UPDATE A TASK
+# PATCH /meetings/{meeting_id}/tasks/{task_id}
+# ============================================================
+
+@router.patch("/{meeting_id}/tasks/{task_id}")
+def edit_meeting_task(
+    meeting_id: int,
+    task_id: int,
+    request: TaskUpdate,
+):
+    db = SessionLocal()
+
+    try:
+        task = get_task_by_id(db, task_id)
+
+        if task is None or task.meeting_id != meeting_id:
+            raise HTTPException(
+                status_code=404,
+                detail="Task not found for this meeting.",
+            )
+
+        task_text = request.task.strip()
+
+        if not task_text:
+            raise HTTPException(
+                status_code=400,
+                detail="Task description cannot be empty.",
+            )
+
+        task = update_task(
+            db=db,
+            task_id=task_id,
+            task=task_text,
+            owner=request.owner,
+            deadline_date=request.deadline_date,
+            priority=request.priority,
+            status=request.status,
+        )
+
+        return {
+            "message": "Task updated successfully.",
+            "task": task_to_dict(task),
+        }
+
+    finally:
+        db.close()
+
+
+# ============================================================
+# DELETE A TASK
+# DELETE /meetings/{meeting_id}/tasks/{task_id}
+# ============================================================
+
+@router.delete("/{meeting_id}/tasks/{task_id}")
+def remove_meeting_task(meeting_id: int, task_id: int):
+    db = SessionLocal()
+
+    try:
+        task = get_task_by_id(db, task_id)
+
+        if task is None or task.meeting_id != meeting_id:
+            raise HTTPException(
+                status_code=404,
+                detail="Task not found for this meeting.",
+            )
+
+        delete_task(db, task_id)
+
+        return {
+            "message": "Task deleted successfully.",
+            "task_id": task_id,
+        }
+
     finally:
         db.close()
