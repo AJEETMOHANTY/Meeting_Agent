@@ -24,8 +24,10 @@ pgvector
 # AI / LLM
 # ==============================
 langchain
-langchain-community
 langgraph
+langchain-community
+langchain-ollama
+langchain-google-genai
 
 # ==============================
 # Speech-to-Text
