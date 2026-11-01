@@ -243,7 +243,7 @@ Replace all placeholders with your actual values. Confirm the exact environment 
 ### API Credentials
 
 - **Gemini:** [Google AI Studio](https://aistudio.google.com/apikey)
-- **Gnani:** Obtain credentials and endpoint details for your enabled STT/TTS services through your Gnani account or developer documentation.
+- **Gnani:** Obtain credentials and endpoint details for your enabled STT/TTS services through your Gnani account or developer documentation.[gnani](https://app.gnani.ai/voice/api-keys)
 
 External API features will not work until their credentials and endpoint configuration are valid.
 
