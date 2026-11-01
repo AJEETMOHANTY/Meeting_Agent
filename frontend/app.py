@@ -639,7 +639,7 @@ if selected_meeting is None:
     st.markdown(
         """
         <div class="welcome-screen">
-            <div class="welcome-icon">🎙️</div>
+            <div class="welcome-icon"></div>
             <h2>Your meetings, made meaningful.</h2>
             <p>
                 Upload a recording to get started, or select a previous

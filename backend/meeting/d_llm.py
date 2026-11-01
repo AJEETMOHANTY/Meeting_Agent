@@ -44,6 +44,7 @@ class MeetingLLM:
         self.ollama = None
         try:
             self.ollama = ChatOllama(model="llama3.1:latest", temperature=0)
+            # self.ollama = ChatOllama(model="hf.co/luminenio/gnani-evon-v3.3-30B-A3B-GGUF:Q2_K",temperature=0)
         except Exception as exc:
             print(f"Ollama unavailable; continuing without it: {exc}")
 
